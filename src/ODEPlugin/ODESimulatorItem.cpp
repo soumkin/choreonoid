@@ -1255,11 +1255,36 @@ static void nearCallback(void* data, dGeomID g1, dGeomID g2)
 		VacuumGripperParams& p = impl->vacuumGripperParams;
 		if (impl->useVacuumGripper) {
 		    if (dAreConnected(impl->vacuumGripperBodyID, gripped) == 0) {
-			dJointID jointID = dJointCreateFixed(impl->worldID, 0);
-			dJointAttach(jointID, gripped, impl->vacuumGripperBodyID);
-			dJointSetFixed(jointID);
-			dJointSetFeedback(jointID, new dJointFeedback());
-			impl->vacuumGripperJointID = jointID;
+			Vector3 vgp(p.position);
+			vgp[0] *= p.normalLine[0];
+			vgp[1] *= p.normalLine[1];
+			vgp[2] *= p.normalLine[2];
+			vgp += p.link->p();
+
+			int n = 0;
+			for(int i=0; i < numContacts; ++i){
+			    Vector3 pos(contacts[i].geom.pos);
+			    Vector3 v(contacts[i].geom.normal);
+
+			    float isParallel = p.normalLine.dot(v);
+
+			    Vector3 pa;
+			    pa[0] = pos[0] - vgp[0];
+			    pa[1] = pos[1] - vgp[1];
+			    pa[2] = pos[2] - vgp[2];
+			    float distance = p.normalLine.dot(pa);
+			    if (isParallel > 0.9f && distance < 0.004f) {
+				n++;
+			    }
+			}
+
+			if (n != 0) {
+			    dJointID jointID = dJointCreateFixed(impl->worldID, 0);
+			    dJointAttach(jointID, gripped, impl->vacuumGripperBodyID);
+			    dJointSetFixed(jointID);
+			    dJointSetFeedback(jointID, new dJointFeedback());
+			    impl->vacuumGripperJointID = jointID;
+			}
 		    } else {
 			dJointFeedback* fb = dJointGetFeedback(impl->vacuumGripperJointID);
 			bool exceeded = false;
