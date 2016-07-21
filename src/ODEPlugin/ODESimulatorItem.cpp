@@ -196,6 +196,8 @@ public:
     void restore(const Archive& archive);
     void collisionCallback(const CollisionPair& collisionPair);
 
+    void nailedObjectLimitCheck();
+
 #ifdef MECANUM_WHEEL_ODE    /* MECANUM_WHEEL_ODE */
     void preserveMecanumWheelSetting(ODEBody* odeBody);
 #endif                      /* MECANUM_WHEEL_ODE */
@@ -1195,6 +1197,9 @@ MessageView::instance()->putln(boost::format("NailDriver: bodyID=%d target=%s")%
 	}
 #endif    /* Experimental. */
     }
+    if (!nailDriverDevs.empty()) {
+        self->addPostDynamicsFunction(boost::bind(&ODESimulatorItemImpl::nailedObjectLimitCheck, this));
+    }
     if(useWorldCollision)
         collisionDetector->makeReady();
 
@@ -1574,9 +1579,9 @@ MessageView::instance()->putln(boost::format(_("NailDriver check body1ID=%1%")) 
                                 // first
                                 nobj = new NailedObject(objId);
                                 dJointID jointID = dJointCreateFixed(impl->worldID, 0);
-                                dJointAttach(jointID, 0, objId);
+                                dJointAttach(jointID, objId, 0);
                                 dJointSetFixed(jointID);
-                                dJointSetFeedback(jointID, new dJointFeedback());
+                                dJointSetFeedback(jointID, &(nobj->fb));
                                 nobj->setJointID(jointID);
                                 nobj->addNail(nailDriver);
                                 nailedObjMngr->addObject(nobj);
@@ -1910,4 +1915,41 @@ void ODESimulatorItemImpl::restore(const Archive& archive)
     archive.read("2Dmode", is2Dmode);
     archive.read("UseWorldItem'sCollisionDetector", useWorldCollision);
     archive.read("velocityMode", velocityMode);
+}
+
+/*
+ */
+void ODESimulatorItemImpl::nailedObjectLimitCheck()
+{
+    NailedObjectManager* nailedObjMngr = NailedObjectManager::getInstance();
+
+    NailedObjectMap& map = nailedObjMngr->map();
+
+    NailedObjectMap::iterator p = map.begin();
+    while (p != map.end()) {
+        dBodyID id = p->first;
+        NailedObjectPtr nobj = p->second;
+        const dReal* pos = dBodyGetPosition(id);
+
+        Vector3 f(nobj->fb.f1);
+        Vector3 tau(nobj->fb.t1);
+
+        double fy = f[1] * f[1];
+        double fz = f[2] * f[2];
+
+#if 0 /* Experimental. */
+        if (!nobj->isLimited(sqrt(fy + fz))) {
+            dJointSetFeedback(nobj->getJointID(), 0);
+            dJointDestroy(nobj->getJointID());
+            nobj->setJointID(0);
+            MessageView::instance()->putln("NailDriver: *** joint destroy : exceeded the limit ***");
+            cout << "NailDriver: *** joint destroy : exceeded the limit  **" << endl;
+            map.erase(p++);
+        } else {
+            p++;
+        }
+#else /* Experimental. */
+        p++;
+#endif /* Experimental. */
+    }
 }

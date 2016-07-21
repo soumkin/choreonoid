@@ -31,10 +31,18 @@ public:
 
     void setJointID(dJointID jointID);
 
+    dJointID getJointID() { return jointID; }
+
     void addNail(NailDriver *nailDriver) {
         nailCount++;
         maxFasteningForce += nailDriver->maxFasteningForce;
     }
+
+    bool isLimited(double force) {
+        return force < maxFasteningForce;
+    }
+
+    const double getMaxFasteningForce() { return maxFasteningForce; }
 
     int getNailCount() {
         return nailCount;
@@ -72,6 +80,8 @@ public:
     NailedObjectPtr get(dBodyID bodyID);
 
     void clear();
+
+    NailedObjectMap& map() { return objectMap; }
 
 private:
     //std::map<dBodyID, NailedObjectPtr> objectMap;
