@@ -187,6 +187,7 @@ public:
 
     double vacuumGripperLimitCheckStartTime;
     double nailDriverLimitCheckStartTime;
+    int nailDriverDistantCheckCount;
 
     ODESimulatorItemImpl(ODESimulatorItem* self);
     ODESimulatorItemImpl(ODESimulatorItem* self, const ODESimulatorItemImpl& org);
@@ -1094,6 +1095,11 @@ void ODESimulatorItem::setNailDriverLimitCheckStartTime(double limitCheckStartTi
     impl->nailDriverLimitCheckStartTime = limitCheckStartTime;
 }
 
+void ODESimulatorItem::setNailDriverDistantCheckCount(int distantCheckCount)
+{
+    impl->nailDriverDistantCheckCount = distantCheckCount;
+}
+
 void ODESimulatorItem::setAllLinkPositionOutputMode(bool on)
 {
     // The mode is not changed.
@@ -1856,7 +1862,7 @@ void ODESimulatorItemImpl::nailDriverCheck()
     for (NailDriverMap::iterator p = nailDriverDevs.begin();
          p != nailDriverDevs.end(); p++) {
         NailDriver* nailDriver = p->second;
-        nailDriver->distantCheck();
+        nailDriver->distantCheck(nailDriverDistantCheckCount);
     }
 }
 

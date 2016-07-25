@@ -54,7 +54,6 @@ NailDriver::NailDriver()
 
     not_called_conunt = 0;
     near_callback_called = false;
-    distantCheckCount = 20;
 
     resetLatestContact();
 }
@@ -79,7 +78,6 @@ NailDriver::NailDriver(const NailDriver& org, bool copyStateOnly)
     position = org.position;
     normal = org.normal;
     maxFasteningForce = org.maxFasteningForce;
-    distantCheckCount = org.distantCheckCount;
 }
 
 
@@ -128,7 +126,7 @@ void NailDriver::fire(NailedObject* nobj)
     ready_ = false;
 }
 
-void NailDriver::distantCheck()
+void NailDriver::distantCheck(int distantCheckCount)
 {
     if (!near_callback_called) {
         // Check number of times nearCallback() was not called continuously.

@@ -43,7 +43,7 @@ public:
 
     void contact() { near_callback_called = true; }
 
-    void distantCheck();
+    void distantCheck(int distantCheckCount);
 
     bool ready() const { return on_ && ready_; }
     void setReady();
@@ -65,7 +65,6 @@ public:
     Vector3 position;
     Vector3 normal;
     double maxFasteningForce;
-    int distantCheckCount;
     double latestContact;
 };
 
