@@ -46,9 +46,12 @@ public:
 
     // for VacuumGripper simulation
     void useVacuumGripper(bool on);
+    void setVacuumGripperLimitCheckStartTime(double limitCheckStartTime);
 
     // for NailDriver simulation
     void useNailDriver(bool on);
+    void setNailDriverLimitCheckStartTime(double limitCheckStartTime);
+    void setNailDriverDistantCheckCount(int distantCheckCount);
 
 protected:
         

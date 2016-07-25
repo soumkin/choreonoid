@@ -36,6 +36,10 @@
 #include <cnoid/MessageView>
 #include <boost/format.hpp>
 
+#ifdef MECANUM_WHEEL_ODE    /* MECANUM_WHEEL_ODE */
+#define MECANUM_WHEEL_ODE_DEBUG 0
+#endif                      /* MECANUM_WHEEL_ODE */
+
 using namespace std;
 using namespace boost;
 using namespace cnoid;
@@ -159,8 +163,9 @@ public:
     //NailedObjectManager nailedObjectMngr;
 #ifdef MECANUM_WHEEL_ODE    /* MECANUM_WHEEL_ODE */
     MecanumWheelSettingMap mecanumWheelSetting;
-    // XXX: this variable will erase later.
+#if (MECANUM_WHEEL_ODE_DEBUG > 0)    /* MECANUM_WHEEL_ODE_DEBUG */
     bool                   mecanumWheelDebug;
+#endif                               /* MECANUM_WHEEL_ODE_DEBUG */
 #endif                      /* MECANUM_WHEEL_ODE */
     vector<ODELink*> geometryIdToLink;
 
@@ -184,6 +189,10 @@ public:
     QElapsedTimer physicsTimer;
     double collisionTime;
     QElapsedTimer collisionTimer;
+
+    double vacuumGripperLimitCheckStartTime;
+    double nailDriverLimitCheckStartTime;
+    int nailDriverDistantCheckCount;
 
     ODESimulatorItemImpl(ODESimulatorItem* self);
     ODESimulatorItemImpl(ODESimulatorItem* self, const ODESimulatorItemImpl& org);
@@ -542,9 +551,9 @@ void ODELink::setKinematicStateToODE()
                 offset = it0->second;
             Position T_ = T*offset;
             Vector3 p = T_.translation() + link->c();
-            dMatrix3 R2 = { T(0,0), T(0,1), T(0,2), 0.0,
-                            T(1,0), T(1,1), T(1,2), 0.0,
-                            T(2,0), T(2,1), T(2,2), 0.0 };
+            dMatrix3 R2 = { T_(0,0), T_(0,1), T_(0,2), 0.0,
+                            T_(1,0), T_(1,1), T_(1,2), 0.0,
+                            T_(2,0), T_(2,1), T_(2,2), 0.0 };
 
             dGeomSetPosition(*it, p.x(), p.y(), p.z());
             dGeomSetRotation(*it, R2);
@@ -925,8 +934,9 @@ ODESimulatorItemImpl::ODESimulatorItemImpl(ODESimulatorItem* self)
     velocityMode = false;
 
 #ifdef MECANUM_WHEEL_ODE    /* MECANUM_WHEEL_ODE */
-    // XXX: this code will erase later.
+#if (MECANUM_WHEEL_ODE_DEBUG > 0)    /* MECANUM_WHEEL_ODE_DEBUG */
     mecanumWheelDebug = false;
+#endif                               /* MECANUM_WHEEL_ODE_DEBUG */
 #endif                      /* MECANUM_WHEEL_ODE */
 }
 
@@ -1072,7 +1082,11 @@ void ODESimulatorItem::useVacuumGripper(bool on)
     }
 }
 
-#if 1    /* Experimental. */
+void ODESimulatorItem::setVacuumGripperLimitCheckStartTime(double limitCheckStartTime)
+{
+    impl->vacuumGripperLimitCheckStartTime = limitCheckStartTime;
+}
+
 void ODESimulatorItem::useNailDriver(bool on)
 {
     for (NailDriverMap::iterator p = impl->nailDriverDevs.begin();
@@ -1081,7 +1095,16 @@ void ODESimulatorItem::useNailDriver(bool on)
         nailDriver->on(on);
     }
 }
-#endif    /* Experimental. */
+
+void ODESimulatorItem::setNailDriverLimitCheckStartTime(double limitCheckStartTime)
+{
+    impl->nailDriverLimitCheckStartTime = limitCheckStartTime;
+}
+
+void ODESimulatorItem::setNailDriverDistantCheckCount(int distantCheckCount)
+{
+    impl->nailDriverDistantCheckCount = distantCheckCount;
+}
 
 void ODESimulatorItem::setAllLinkPositionOutputMode(bool on)
 {
@@ -1245,7 +1268,7 @@ MessageView::instance()->putln(boost::format("Add NailDriver: bodyID=%d target=%
 /**
    @brief Preserve mecanum wheel setting.
    @param[in] odeBody Pointer of ODEBody.
-   @attention Please this method calling after addBody method.
+   @attention Please this method calling from addBody method.
  */
 void ODESimulatorItemImpl::preserveMecanumWheelSetting(ODEBody* odeBody)
 {
@@ -1273,7 +1296,7 @@ void ODESimulatorItemImpl::preserveMecanumWheelSetting(ODEBody* odeBody)
     for (size_t i = 0; i < links->size(); i++) {
         try {
             string s = links->at(i)->toString();
-            double d = PI_2;
+            double d = 0.0;
             Link*  p = odeBody->body()->link(s);
 
             if (! p) {
@@ -1291,12 +1314,31 @@ void ODESimulatorItemImpl::preserveMecanumWheelSetting(ODEBody* odeBody)
             }
 
             if (angles->isValid() && angles->size() > i) {
-                d = angles->at(i)->toDouble();
+                double d2;
+
+                d2 = angles->at(i)->toDouble();
+
+                if (d2 != 0.0) {
+                    d = (abs(PI_2 - d2) < 0.00001) ? 0.0 : d2;
+                } else {
+                    d = PI_2;
+                }
             }
 
             for (size_t j = 0; j < odeBody->odeLinks.size(); j++) {
                 if (p == odeBody->odeLinks[j]->link) {
                     mecanumWheelSetting.insert(make_pair(odeBody->odeLinks[j]->bodyID, d));
+#if (MECANUM_WHEEL_ODE_DEBUG > 0)    /* MECANUM_WHEEL_ODE_DEBUG */
+
+                    if (mecanumWheelDebug) {
+                        MessageView::instance()->putln(
+                            MessageView::NORMAL,
+                            boost::format("%1%: mecanum wheel %2% (%3% radians)")
+                                % __PRETTY_FUNCTION__ % p->name() % d
+                            );
+                    }
+
+#endif                               /* MECANUM_WHEEL_ODE_DEBUG */
                     break;
                 }
             }
@@ -1400,7 +1442,12 @@ MessageView::instance()->putln("*** vacuum gripper already gripping ***");
 cout << "*** vacuum gripper already gripping ***" << endl;
 #endif // VACUUM_GRIPPER_DEBUG
                             if (vacuumGripper->isGripping(objId)) {
-				if (vacuumGripper->limitCheck()){
+                                // limit check
+                                if (impl->self->currentTime() < impl->vacuumGripperLimitCheckStartTime) {
+                                    return;
+                                }
+
+                                if (vacuumGripper->limitCheck()){
                                     MessageView::instance()->putln("VacuumGripper: *** joint destroy : exceeded the limit ***");
                                     cout << "VacuumGripper: *** joint destroy : exceeded the limit  **" << endl;
 				    vacuumGripper->release();
@@ -1522,15 +1569,15 @@ cout << "NailDriver OFF **" << endl;
 #ifdef MECANUM_WHEEL_ODE    /* MECANUM_WHEEL_ODE */
                     if (isMecanumWheel) {
                         Vector3 mwdir = AngleAxis(barrelAngle, n).toRotationMatrix().transpose() * dir;
+#if (MECANUM_WHEEL_ODE_DEBUG > 0)    /* MECANUM_WHEEL_ODE_DEBUG */
 
-                        // XXX: this block will erase later.
                         if (impl->mecanumWheelDebug) {
                             cout << crawlerlink->name() << endl;
-                            cout << "dir  : " << dir.transpose() << endl;
-                            cout << "mwdir: " << mwdir.transpose() << endl;
-                            cout << "-----" << endl;
+                            cout << "\tcrawler's dir      : " << dir.transpose() << endl;
+                            cout << "\tmecanum wheel's dir: " << mwdir.transpose() << endl;
                         }
 
+#endif                               /* MECANUM_WHEEL_ODE_DEBUG */
                         dir = mwdir;
                     }
 #endif                      /* MECANUM_WHEEL_ODE */
@@ -1640,11 +1687,8 @@ void ODESimulatorItemImpl::collisionCallback(const CollisionPair& collisionPair)
     ODELink* link2 = geometryIdToLink[collisionPair.geometryId[1]];
     const vector<Collision>& collisions = collisionPair.collisions;
 
-cout << "ODESimulatorItemImpl:collisionCallback ***" << endl;
     dBodyID body1ID = link1->bodyID;
     dBodyID body2ID = link2->bodyID;
-cout << "ODESimulatorItemImpl:collisionCallback: body1ID:" << body1ID << endl;
-cout << "ODESimulatorItemImpl:collisionCallback: body2ID:" << body2ID << endl;
     Link* crawlerlink = 0;
     double sign = 1.0;
     if(!crawlerLinks.empty()){
@@ -1753,8 +1797,9 @@ void ODESimulatorItemImpl::doPutProperties(PutPropertyFunction& putProperty)
     putProperty(_("Velocity Control Mode"), velocityMode, changeProperty(velocityMode));
 
 #ifdef MECANUM_WHEEL_ODE    /* MECANUM_WHEEL_ODE */
-    // XXX: this code will erase later.
+#if (MECANUM_WHEEL_ODE_DEBUG > 0)    /* MECANUM_WHEEL_ODE_DEBUG */
     putProperty("Mecanum Wheel Debug Mode", mecanumWheelDebug, changeProperty(mecanumWheelDebug));
+#endif                               /* MECANUM_WHEEL_ODE_DEBUG */
 #endif                      /* MECANUM_WHEEL_ODE */
 }
 
@@ -1840,7 +1885,7 @@ void ODESimulatorItemImpl::nailDriverCheck()
     for (NailDriverMap::iterator p = nailDriverDevs.begin();
          p != nailDriverDevs.end(); p++) {
         NailDriver* nailDriver = p->second;
-        nailDriver->distantCheck();
+        nailDriver->distantCheck(nailDriverDistantCheckCount);
     }
 }
 
@@ -1848,32 +1893,23 @@ void ODESimulatorItemImpl::nailDriverCheck()
  */
 void ODESimulatorItemImpl::nailedObjectLimitCheck()
 {
+
+    if (self->currentTime() < nailDriverLimitCheckStartTime) {
+        return;
+    }
+
     NailedObjectManager* nailedObjMngr = NailedObjectManager::getInstance();
 
     NailedObjectMap& map = nailedObjMngr->map();
 
     NailedObjectMap::iterator p = map.begin();
     while (p != map.end()) {
-        dBodyID id = p->first;
         NailedObjectPtr nobj = p->second;
-        const dReal* pos = dBodyGetPosition(id);
 
-        Vector3 f(nobj->fb.f1);
-        Vector3 tau(nobj->fb.t1);
-
-        double fy = f[1] * f[1];
-        double fz = f[2] * f[2];
-
-#if 0 /* Experimental. */
-        if (!nobj->isLimited(sqrt(fy + fz))) {
-            MessageView::instance()->putln("NailDriver: *** exceeded the limit ***");
-            cout << "NailDriver: *** exceeded the limit  **" << endl;
+        if (nobj->isLimited()) {
             map.erase(p++);
         } else {
             p++;
         }
-#else /* Experimental. */
-        p++;
-#endif /* Experimental. */
     }
 }

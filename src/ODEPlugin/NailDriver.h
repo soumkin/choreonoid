@@ -5,7 +5,6 @@
 #ifndef CNOID_ODEPLUGIN_NAILDRIVER_H
 #define CNOID_ODEPLUGIN_NAILDRIVER_H
 
-#include "NailedObjectManager.h"
 #include <cnoid/EigenTypes>
 #include <cnoid/Body>
 #include <cnoid/Link>
@@ -15,6 +14,7 @@
 #include <ode/ode.h>
 
 namespace cnoid {
+class NailedObject;
 
 class CNOID_EXPORT NailDriver : public Device
 {
@@ -43,12 +43,12 @@ public:
 
     void contact() { near_callback_called = true; }
 
-    void distantCheck();
+    void distantCheck(int distantCheckCount);
 
     bool ready() const { return on_ && ready_; }
     void setReady();
 
-    void fire(NailedObjectPtr nobj);
+    void fire(NailedObject* nobj);
 
     void setLatestContact(const double current) { latestContact = current; }
     double getLatestContact() { return latestContact; }
