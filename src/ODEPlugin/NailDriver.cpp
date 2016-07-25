@@ -122,6 +122,11 @@ void NailDriver::fire(NailedObject* nobj)
     MessageView::instance()->putln(boost::format(_("%s: Fire")) % typeName());
     cout << boost::format(_("%s: Fire")) % typeName() << endl;
 
+    if (nobj->getNailCount() == 0) {
+        const Vector3 n = link()->R() * normal;
+        nobj->setNailDirection(n);
+    }
+
     nobj->addNail(maxFasteningForce);
     ready_ = false;
 }

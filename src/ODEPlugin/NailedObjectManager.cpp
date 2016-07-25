@@ -29,6 +29,23 @@ NailedObject::~NailedObject()
     dJointDestroy(jointID);
 }
 
+bool NailedObject::isLimited()
+{
+    dJointFeedback* fb = dJointGetFeedback(jointID);
+
+    Vector3 f(fb->f1);
+    double fasteningForce = n_.dot(f);
+
+    // check fastening force
+    if (fasteningForce > maxFasteningForce) {
+        MessageView::instance()->putln(boost::format("FasteningForce limit exceeded: %f > %f") % fasteningForce % maxFasteningForce);
+        cout << boost::format("FasteningForce limit exceeded: %f > %f") % fasteningForce % maxFasteningForce << endl;
+        return true;
+    }
+    return false;
+}
+
+
 NailedObjectManager* NailedObjectManager::getInstance()
 {
     static NailedObjectManager instance;

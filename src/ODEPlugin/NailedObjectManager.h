@@ -37,15 +37,15 @@ public:
         maxFasteningForce += fasteningForce;
     }
 
-    bool isLimited(double force) {
-        return force + maxFasteningForce < 0;
-    }
+    bool isLimited();
 
     const double getMaxFasteningForce() { return maxFasteningForce; }
 
     int getNailCount() {
         return nailCount;
     }
+
+    void setNailDirection(const Vector3 n) { n_ = n; }
 
     dBodyID getBodyID() { return objId_; }
 
@@ -56,6 +56,7 @@ private:
     int nailCount;
     dBodyID objId_;
     dJointID jointID;
+    Vector3 n_;
 };
 
 typedef ref_ptr<NailedObject> NailedObjectPtr;
