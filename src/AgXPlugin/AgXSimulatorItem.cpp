@@ -42,6 +42,7 @@
 #include <boost/bind.hpp>
 #include <cnoid/IdPair>
 #include <cnoid/EigenArchive>
+#include <cnoid/LinkGroup>
 #include "gettext.h"
 
 using namespace std;
@@ -83,6 +84,27 @@ public :
     double youngsModulus;
 };
 
+struct ComplianceParam {
+    int dof;
+    double compliance;
+    double damping;
+};
+
+struct MotorParam {
+    double compliance;
+    double damping;
+};
+
+struct HingeJointParam {
+    vector<ComplianceParam> complianceParam;
+    MotorParam motorParam;
+};
+
+struct PlaneJointParam {
+    double compliance;
+    double damping;
+};
+
 class AgXLink : public Referenced
 {
 public :
@@ -103,6 +125,7 @@ public :
     enum InputMode { NON, VEL, TOR };
     InputMode inputMode;
     int numOfTrack;
+    bool isControlJoint;
 
     AgXLink(AgXSimulatorItemImpl* simImpl, AgXBody* agxXBody, AgXLink* parent,
                   const Vector3& parentOrigin, Link* link);
@@ -114,6 +137,7 @@ public :
     void setKinematicStateToAgX();
     void getKinematicStateFromAgX();
     void setTorqueToAgX();
+    bool getHingeJointParam(HingeJointParam& hingeJointParam);
 };
 typedef ref_ptr<AgXLink> AgXLinkPtr;
 
@@ -143,28 +167,6 @@ public :
         }
         return empty;
     }
-    struct ComplianceParam {
-        int dof;
-        double compliance;
-        double damping;
-    };
-    struct MotorParam {
-        double compliance;
-        double damping;
-    };
-    struct HingeJointParam {
-        vector<ComplianceParam> complianceParam;
-        MotorParam motorParam;
-    };
-    typedef map<Link*, HingeJointParam> HingeJointParamMap;
-    HingeJointParamMap hingeJointParamMap;
-
-    struct PlaneJointParam {
-        double compliance;
-        double damping;
-    };
-    typedef map<Link*, PlaneJointParam> PlaneJointParamMap;
-    PlaneJointParamMap planeJointParamMap;
 
     vector<ContactMaterialParam> contactMaterialParams;
     vector< IdPair<string> > selfCollisionDetectionLinkGroupPairs;
@@ -196,6 +198,7 @@ public :
     void updateForceSensors();
     void setTorqueToAgX();
     void createCrawlerJoint();
+    void setLinkGroup(const LinkGroupPtr& linkGroup);
 };
 
 
@@ -243,7 +246,10 @@ public :
         if(dir.length() < 1e-5)
             return agx::Vec3f( 0.0, 0.0, 0.0 );
         dir.normalize();
-        dir *= -link->u();
+        if(link->jointType()==Link::PSEUDO_CONTINUOUS_TRACK)
+            dir *= -link->dq();
+        else
+            dir *= -link->u();
         agx::Vec3 ret = agxBody->getFrame()->transformVectorToLocal( dir );
         return agx::Vec3f(ret);
     }
@@ -671,7 +677,8 @@ AgXLink::AgXLink
     link(link),
     parent(parent),
     unit(0),
-    numOfTrack(-1)
+    numOfTrack(-1),
+    isControlJoint(true)
 {
     AgXSimulatorItemImpl::ControlModeMap::iterator it = simImpl->controlModeMap.find(link);
     if(it!=simImpl->controlModeMap.end())
@@ -736,6 +743,7 @@ AgXLink::AgXLink
     if(parent && parent->numOfTrack!=-1){
         numOfTrack = parent->numOfTrack;
         agxBody->tracks[numOfTrack].feet.push_back(this);
+        isControlJoint = false;
     }
 
     for(Link* child = link->child(); child; child = child->sibling()){
@@ -901,6 +909,10 @@ void AgXLink::createJoint()
 
     joint = 0;
 
+    double rotorInertia = link->Jm2();
+    if(!rotorInertia)
+        rotorInertia = link->info("rotorInertia", 0.0);
+
     switch(link->jointType()){
     case Link::ROTATIONAL_JOINT:
     case Link::SLIDE_JOINT:
@@ -912,7 +924,7 @@ void AgXLink::createJoint()
             inputMode = VEL;
             break;
         case AgXSimulatorItem::TORQUE :
-            if(link->Jm2()){
+            if(rotorInertia){
                 part = SHAFT;
                 inputMode = TOR;
             }else{
@@ -925,7 +937,7 @@ void AgXLink::createJoint()
             inputMode = InputMode::NON;
             break;
         case AgXSimulatorItem::DEFAULT :
-            if(!link->Jm2() || simImpl->dynamicsMode.is(AgXSimulatorItem::HG_DYNAMICS)){
+            if(!rotorInertia || simImpl->dynamicsMode.is(AgXSimulatorItem::HG_DYNAMICS)){
                 part = MOTOR;
                 if(simImpl->dynamicsMode.is(AgXSimulatorItem::HG_DYNAMICS))
                     inputMode = VEL;
@@ -948,9 +960,8 @@ void AgXLink::createJoint()
             simImpl->agxSimulation->add( hinge );
             joint = hinge;
 
-            AgXBody::HingeJointParamMap::iterator it = agxBody->hingeJointParamMap.find(link);
-            if(it!=agxBody->hingeJointParamMap.end()){
-                AgXBody::HingeJointParam& hingeParam = it->second;
+            HingeJointParam hingeParam;
+            if(getHingeJointParam(hingeParam)){
                 for(int i=0; i<hingeParam.complianceParam.size(); i++){
                     if(hingeParam.complianceParam[i].compliance!=std::numeric_limits<double>::max())
                         hinge->setCompliance(hingeParam.complianceParam[i].compliance, hingeParam.complianceParam[i].dof);
@@ -975,7 +986,7 @@ void AgXLink::createJoint()
                 agxDriveTrain::GearRef gear = new agxDriveTrain::Gear();
                 agxDriveTrain::ShaftRef shaft = new agxDriveTrain::Shaft();
                 shaft->connect(rotationalActuator, gear);
-                shaft->setInertia( link->Jm2() );
+                shaft->setInertia( rotorInertia );
                 simImpl->powerLine->add(shaft);
                 unit = shaft;
             }else if(part==NON)
@@ -1001,7 +1012,7 @@ void AgXLink::createJoint()
                 agxPowerLine::TranslationalConnectorRef connector = new agxPowerLine::TranslationalConnector();
                 agxPowerLine::TranslationalUnitRef translationalUnit = new agxPowerLine::TranslationalUnit();
                 translationalUnit->connect(translationalActuator, connector);
-                translationalUnit->setMass( link->Jm2() );
+                translationalUnit->setMass( rotorInertia );
                 simImpl->powerLine->add(translationalUnit);
                 unit = translationalUnit;
             }else if(part==NON)
@@ -1010,7 +1021,8 @@ void AgXLink::createJoint()
         break;
     }
     case Link::FIXED_JOINT:
-    case Link::CRAWLER_JOINT:{
+    case Link::CRAWLER_JOINT:
+    case Link::PSEUDO_CONTINUOUS_TRACK:{
         if(!parent){
             agxRigidBody->setMotionControl(agx::RigidBody::STATIC);
         }else{
@@ -1043,13 +1055,13 @@ void AgXLink::createGeometry(AgXBody* agxBody)
         if(extractor->extract(link->shape(), boost::bind(&AgXLink::addMesh, this, extractor, agxBody))){
             if(!vertices.empty()){
                 agxCollide::TrimeshRef triangleMesh = new agxCollide::Trimesh( &vertices, &indices, "" );
-                if(link->jointType()!=Link::CRAWLER_JOINT)
-                    agxRigidBody->add( new agxCollide::Geometry( triangleMesh ) );
-                else{
+                if(link->jointType() == Link::PSEUDO_CONTINUOUS_TRACK || link->jointType() == Link::CRAWLER_JOINT){
                     agx::ref_ptr<CrawlerGeometry> crawlerGeometry = new CrawlerGeometry( link, agxRigidBody.get() );
                     crawlerGeometry->add( triangleMesh );
                     crawlerGeometry->setSurfaceVelocity( agx::Vec3f(1,0,0) );   //適当に設定しておかないとcalculateSurfaceVelocityが呼び出されない。
                     agxRigidBody->add( crawlerGeometry );
+                }else{
+                    agxRigidBody->add( new agxCollide::Geometry( triangleMesh ) );
                 }
             }
         }
@@ -1099,11 +1111,11 @@ void AgXLink::addMesh(MeshExtractor* extractor, AgXBody* agxBody)
         if(doAddPrimitive){
             bool created = false;
             agxCollide::GeometryRef agxGeometry;
-            if(link->jointType()!=Link::CRAWLER_JOINT)
-                agxGeometry = new agxCollide::Geometry();
-            else{
+            if(link->jointType() == Link::PSEUDO_CONTINUOUS_TRACK || link->jointType() == Link::CRAWLER_JOINT){
                 agxGeometry = new CrawlerGeometry(link, agxRigidBody.get());
                 agxGeometry->setSurfaceVelocity( agx::Vec3f(1,0,0) );
+            }else{
+                agxGeometry = new agxCollide::Geometry();
             }
             switch(mesh->primitiveType()){
             case SgMesh::BOX : {
@@ -1165,6 +1177,61 @@ void AgXLink::addMesh(MeshExtractor* extractor, AgXBody* agxBody)
             indices.push_back(vertexIndexTop + src[2]);
         }
     }
+}
+
+
+bool AgXLink::getHingeJointParam(HingeJointParam& hingeJointParam)
+{
+    bool ret = false;
+
+    const Mapping& hingeParam = *link->info();
+    if(hingeParam.isValid()){
+        const Listing& compParams = *hingeParam.findListing("hingeCompliance");
+        if(compParams.isValid()){
+            ret = true;
+            for(int j=0; j<compParams.size(); j++){
+                const Mapping& compParam = *compParams[j].toMapping();
+                ComplianceParam complianceParam;
+                string s;
+                complianceParam.dof = agx::Hinge::DOF::ALL_DOF -1;
+                if(compParam.read("dof", s )){
+                    if(s=="ALL_DOF")
+                        complianceParam.dof = agx::Hinge::DOF::ALL_DOF;
+                    else if(s=="TRANSLATIONAL_1")
+                        complianceParam.dof = agx::Hinge::DOF::TRANSLATIONAL_1;
+                    else if(s=="TRANSLATIONAL_2")
+                        complianceParam.dof = agx::Hinge::DOF::TRANSLATIONAL_2;
+                    else if(s=="TRANSLATIONAL_3")
+                        complianceParam.dof = agx::Hinge::DOF::TRANSLATIONAL_3;
+                    else if(s=="ROTATIONAL_1")
+                        complianceParam.dof = agx::Hinge::DOF::ROTATIONAL_1;
+                    else if(s=="ROTATIONAL_2")
+                        complianceParam.dof = agx::Hinge::DOF::ROTATIONAL_2;
+                }
+                if(complianceParam.dof >= agx::Hinge::DOF::ALL_DOF){
+                    double w;
+                    complianceParam.compliance = complianceParam.damping = std::numeric_limits<double>::max();
+                    if(compParam.read("compliance", w))
+                        complianceParam.compliance = w;
+                    if(compParam.read("damping", w))
+                        complianceParam.damping = w;
+                    hingeJointParam.complianceParam.push_back(complianceParam);
+                }
+            }
+        }
+        const Mapping& reguParam = *hingeParam.findMapping("hingeMotor");
+        if(reguParam.isValid()){
+            ret = true;
+            hingeJointParam.motorParam.compliance = hingeJointParam.motorParam.damping = std::numeric_limits<double>::max();
+            double w;
+            if(reguParam.read("compliance", w ))
+                hingeJointParam.motorParam.compliance = w;
+            if(reguParam.read("damping", w ))
+                hingeJointParam.motorParam.damping = w;
+        }
+    }
+
+    return ret;
 }
 
 
@@ -1243,6 +1310,9 @@ void AgXLink::getKinematicStateFromAgX()
 
 void AgXLink::setTorqueToAgX()
 {
+    if(!isControlJoint)
+        return;
+
     if(unit){
         agxDriveTrain::Shaft* shaft = dynamic_cast<agxDriveTrain::Shaft*>(unit);
         if(shaft){
@@ -1313,110 +1383,31 @@ void AgXForceField::updateForce(agx::DynamicsSystem* system)
 }
 
 
+void AgXBody::setLinkGroup(const LinkGroupPtr& linkGroup)
+{
+    int n = linkGroup->numElements();
+    for(int i=0; i < n; ++i){
+        if(linkGroup->isSubGroup(i)){
+            setLinkGroup(linkGroup->subGroup(i));
+        } else if(linkGroup->isLinkIndex(i)){
+            Link* link = body()->link(linkGroup->linkIndex(i));
+            if(link){
+                linkGroups[linkGroup->name()].push_back( link );
+            }
+        }
+    }
+}
+
+
 AgXBody::AgXBody(Body& orgBody, AgXSimulatorItemImpl* simImpl)
     : SimulationBody(new Body(orgBody)),
       simImpl(simImpl)
 {
     Body* body = this->body();
 
-    linkGroups.clear();
-    const Listing& linkGroupList = *body->info()->findListing("linkGroups");
-    if(linkGroupList.isValid()){
-        for(int i=0; i < linkGroupList.size(); ++i){
-            const Mapping& group = *linkGroupList[i].toMapping();
-            string name = group["name"];
-            const Listing& links = *group["links"].toListing();
-            for(int j=0; j<links.size(); j++){
-                Link* link = body->link(links[j].toString());
-                if(link)
-                    linkGroups[name].push_back( link );
-            }
-        }
-    }
-
-    hingeJointParamMap.clear();
-    const Listing& jointParams = *body->info()->findListing("agxHingeJointParameters");
-    if(jointParams.isValid()){
-        for(int i=0; i < jointParams.size(); ++i){
-            const Mapping& jointParam = *jointParams[i].toMapping();
-            HingeJointParam hingeJointParam;
-            const Listing& compParams = *jointParam.findListing("complianceParameters");
-            if(compParams.isValid()){
-                for(int j=0; j<compParams.size(); j++){
-                    const Mapping& compParam = *compParams[j].toMapping();
-                    ComplianceParam complianceParam;
-                    string s;
-                    complianceParam.dof = agx::Hinge::DOF::ALL_DOF -1;
-                    if(compParam.read("dof", s )){
-                        if(s=="ALL_DOF")
-                            complianceParam.dof = agx::Hinge::DOF::ALL_DOF;
-                        else if(s=="TRANSLATIONAL_1")
-                            complianceParam.dof = agx::Hinge::DOF::TRANSLATIONAL_1;
-                        else if(s=="TRANSLATIONAL_2")
-                            complianceParam.dof = agx::Hinge::DOF::TRANSLATIONAL_2;
-                        else if(s=="TRANSLATIONAL_3")
-                            complianceParam.dof = agx::Hinge::DOF::TRANSLATIONAL_3;
-                        else if(s=="ROTATIONAL_1")
-                            complianceParam.dof = agx::Hinge::DOF::ROTATIONAL_1;
-                        else if(s=="ROTATIONAL_2")
-                            complianceParam.dof = agx::Hinge::DOF::ROTATIONAL_2;
-                    }
-                    if(complianceParam.dof >= agx::Hinge::DOF::ALL_DOF){
-                        double w;
-                        complianceParam.compliance = complianceParam.damping = std::numeric_limits<double>::max();
-                        if(compParam.read("compliance", w))
-                            complianceParam.compliance = w;
-                        if(compParam.read("damping", w))
-                            complianceParam.damping = w;
-                        hingeJointParam.complianceParam.push_back(complianceParam);
-                    }
-                }
-            }
-            ValueNode* node = jointParam.find(toUTF8("motorParameters"));
-            if(node->isValid()){
-                hingeJointParam.motorParam.compliance = hingeJointParam.motorParam.damping = std::numeric_limits<double>::max();
-                const Mapping& reguParam = *node->toMapping();
-                double w;
-                if(reguParam.read("compliance", w ))
-                    hingeJointParam.motorParam.compliance = w;
-                if(reguParam.read("damping", w ))
-                    hingeJointParam.motorParam.damping = w;
-            }
-            const Listing& linkGroups0 = *jointParam.findListing("linkGroups");
-            if(linkGroups0.isValid()){
-                for(int j=0; j<linkGroups0.size(); j++){
-                    vector<Link*> links = linkGroups[linkGroups0[j].toString()];
-                    for(int k=0; k<links.size(); k++){
-                        hingeJointParamMap[links[k]] = hingeJointParam;
-                    }
-                }
-            }
-        }
-    }
-
-    planeJointParamMap.clear();
-    const Listing& plJointParams = *body->info()->findListing("agxPlaneJointParameters");
-    if(plJointParams.isValid()){
-        for(int i=0; i < plJointParams.size(); ++i){
-            const Mapping& jointParam = *plJointParams[i].toMapping();
-            PlaneJointParam planeJointParam;
-            planeJointParam.compliance = planeJointParam.damping = std::numeric_limits<double>::max();
-            double w;
-            if(jointParam.read("compliance", w ))
-                planeJointParam.compliance = w;
-            if(jointParam.read("damping", w ))
-                planeJointParam.damping = w;
-            const Listing& linkGroups0 = *jointParam.findListing("linkGroups");
-            if(linkGroups0.isValid()){
-                for(int j=0; j<linkGroups0.size(); j++){
-                    vector<Link*> links = linkGroups[linkGroups0[j].toString()];
-                    for(int k=0; k<links.size(); k++){
-                        planeJointParamMap[links[k]] = planeJointParam;
-                    }
-                }
-            }
-        }
-    }
+    LinkGroupPtr linkGroup = LinkGroup::create(*body);
+    setLinkGroup(linkGroup);
+    linkGroups.erase("Whole Body");
 
     contactMaterialParams.clear();
     const Listing& cmParams = *body->info()->findListing("agxContactMaterialParameters");
@@ -1498,19 +1489,17 @@ AgXBody::AgXBody(Body& orgBody, AgXSimulatorItemImpl* simImpl)
     }
 
     selfCollisionDetectionLinkGroupPairs.clear();
-    ValueNode* node =  body->info()->find(toUTF8("selfCollisionDetection"));
-    if(node->isValid()){
-        const Mapping& selfCollisionDetection = *node->toMapping();
+    const Mapping& selfCollisionDetection = *body->info()->findMapping("agxSelfCollisionDetection");
+    if(selfCollisionDetection.isValid()){
         const Listing& linkGroupPairs = *selfCollisionDetection.findListing("linkGroupPairs");
         if(linkGroupPairs.isValid()){
             for(int j=0; j<linkGroupPairs.size(); j++){
                 const Listing& linkGroupPairList = *linkGroupPairs[j].toListing();
                 selfCollisionDetectionLinkGroupPairs.push_back(
-                    IdPair<string>(linkGroupPairList[0].toString(), linkGroupPairList[1].toString()) );
+                        IdPair<string>(linkGroupPairList[0].toString(), linkGroupPairList[1].toString()) );
             }
         }
     }
-
 }
 
 
@@ -1539,15 +1528,20 @@ void AgXBody::createBody()
                 }
             }
         }
+        for(LinkGroups::iterator it = linkGroups.begin(); it != linkGroups.end(); it++){
+            GeometryGroupIds::iterator itr = geometryGroupIds.find(it->first);
+            if(itr == geometryGroupIds.end())
+                geometryGroupIds[it->first] = geometryGroupId;
+        }
     }
 
     AgXLink* rootLink = new AgXLink(simImpl, this, 0, Vector3::Zero(), body()->rootLink());
 
+    setKinematicStateToAgX();
+
     if(!tracks.empty()){
         createCrawlerJoint();
     }
-
-    setKinematicStateToAgX();
 
     if(!selfCollisionDetectionEnabled){
         simImpl->agxSimulation->getSpace()->setEnablePair(geometryGroupId,geometryGroupId,false);
@@ -1679,17 +1673,38 @@ void AgXBody::createCrawlerJoint()
 
         // Connect the two ends.
         const Vector3& a = link0->link->a();
+        Vector3 a_ = link0->link->attitude() * a;
         agx::HingeFrame hingeFrame;
-        hingeFrame.setAxis( agx::Vec3( a(0), a(1), a(2)) );
-        agx::Vec3 o = link0->agxRigidBody->getPosition();
-        hingeFrame.setCenter( o );
+        hingeFrame.setAxis( agx::Vec3( a_(0), a_(1), a_(2)) );
+        const Vector3& o = link0->link->p();
+        hingeFrame.setCenter( agx::Vec3( o(0), o(1), o(2)));
+
         agx::HingeRef hinge = new agx::Hinge( hingeFrame, link0->agxRigidBody, link1->agxRigidBody );
         simImpl->agxSimulation->add( hinge );
+        link0->joint = hinge;
+        hinge->getMotor1D()->setEnable(true);
+        Vector2 forceRange(-std::numeric_limits<agx::Real>::max(), std::numeric_limits<agx::Real>::max());
+        agx::Constraint1DOF::safeCast( hinge )->getMotor1D()->setForceRange( forceRange[0], forceRange[1] );
 
+        HingeJointParam hingeParam;
+        if(link0->getHingeJointParam(hingeParam)){
+            for(int i=0; i<hingeParam.complianceParam.size(); i++){
+                if(hingeParam.complianceParam[i].compliance!=std::numeric_limits<double>::max())
+                    hinge->setCompliance(hingeParam.complianceParam[i].compliance, hingeParam.complianceParam[i].dof);
+                if(hingeParam.complianceParam[i].damping!=std::numeric_limits<double>::max())
+                    hinge->setDamping(hingeParam.complianceParam[i].damping, hingeParam.complianceParam[i].dof);
+            }
+            if(hingeParam.motorParam.compliance!=std::numeric_limits<double>::max())
+                hinge->getMotor1D()->setCompliance(hingeParam.motorParam.compliance);
+            if(hingeParam.motorParam.damping!=std::numeric_limits<double>::max())
+                hinge->getMotor1D()->setDamping(hingeParam.motorParam.damping);
+        }
         // setting PlaneJoint
         agx::FrameRef frame1 = new agx::Frame();
         agx::Vec3 a0( a(0), a(1), a(2) );
-        agx::Vec3 p = (o * a0) * a0;
+        const Vector3& b = link0->link->b();
+        agx::Vec3 b0( b(0), b(1), b(2) );
+        agx::Vec3 p = ( b0 * a0 ) * a0;
         agx::Vec3 nx = agx::Vec3::Z_AXIS().cross(a0);
         agx::OrthoMatrix3x3 rotation;
         if(nx.normalize() > 1.0e-6){
@@ -1706,17 +1721,19 @@ void AgXBody::createCrawlerJoint()
         for(int j=0; j<track.feet.size(); j++){
             AgXLink* foot = track.feet[j];
             agx::FrameRef frame0 = new agx::Frame();
-            frame0->setTranslate(foot->agxRigidBody->getCmLocalTranslate());
-            agx::PlaneJointRef plane = new agx::PlaneJoint( foot->agxRigidBody, frame0, track.parent->agxRigidBody, frame1);
+             agx::PlaneJointRef plane = new agx::PlaneJoint( foot->agxRigidBody, frame0, track.parent->agxRigidBody, frame1);
             simImpl->agxSimulation->add( plane );
-            PlaneJointParamMap::iterator it = planeJointParamMap.find(foot->link);
-            if(it!=planeJointParamMap.end()){
-                PlaneJointParam& planeParam = it->second;
-                if(planeParam.compliance!=std::numeric_limits<double>::max())
-                    plane->setCompliance(planeParam.compliance);
-                if(planeParam.damping!=std::numeric_limits<double>::max())
-                    plane->setDamping(planeParam.damping);
-            }
+
+            double w = foot->link->info("planeCompliance", std::numeric_limits<double>::max());
+            if(w!=std::numeric_limits<double>::max())
+                plane->setCompliance(w);
+            w = foot->link->info("planeDamping", std::numeric_limits<double>::max());
+            if(w!=std::numeric_limits<double>::max())
+                plane->setDamping(w);
+
+            agx::Constraint1DOF* joint1DOF = agx::Constraint1DOF::safeCast(foot->joint);
+            if(joint1DOF)
+                joint1DOF->getMotor1D()->setSpeed( 0.0 );
         }
     }
 }

@@ -16,6 +16,7 @@ Link::Link()
     index_ = -1;
     jointId_ = -1;
     parent_ = 0;
+    body_ = 0;
     T_.setIdentity();
     Tb_.setIdentity();
     Rs_.setIdentity();
@@ -40,6 +41,7 @@ Link::Link()
     dq_upper_ = std::numeric_limits<double>::max();
     dq_lower_ = -std::numeric_limits<double>::max();
     info_ = new Mapping;
+    initd_ = 0.0;
 }
 
 
@@ -50,6 +52,7 @@ Link::Link(const Link& org)
     jointId_ = org.jointId_;
 
     parent_ = 0;
+    body_ = 0;
 
     T_ = org.T_;
     Tb_ = org.Tb_;
@@ -85,6 +88,7 @@ Link::Link(const Link& org)
     visualShape_ = org.visualShape_;
     collisionShape_ = org.collisionShape_;
     info_ = org.info_;
+    initd_ = org.initd_;
 }
 
 
@@ -100,6 +104,23 @@ Link::~Link()
 }
 
 
+void Link::setBody(Body* newBody)
+{
+    if(body_ != newBody){
+        setBodySub(newBody);
+    }
+}
+
+
+void Link::setBodySub(Body* newBody)
+{
+    body_ = newBody;
+    for(Link* link = child_; link; link = link->sibling_){
+        link->setBodySub(newBody);
+    }
+}
+
+
 void Link::prependChild(Link* link)
 {
     LinkPtr holder;
@@ -110,6 +131,8 @@ void Link::prependChild(Link* link)
     link->sibling_ = child_;
     child_ = link;
     link->parent_ = this;
+
+    link->setBody(body_);
 }
 
 
@@ -132,6 +155,8 @@ void Link::appendChild(Link* link)
         link->sibling_ = 0;
     }
     link->parent_ = this;
+
+    link->setBody(body_);
 }
 
 
@@ -154,6 +179,7 @@ bool Link::removeChild(Link* childToRemove)
             } else {
                 child_ = link->sibling_;
             }
+            childToRemove->setBody(0);
             return true;
         }
         prevSibling = link;
@@ -176,6 +202,7 @@ std::string Link::jointTypeString() const
     case SLIDE_JOINT:       return "prismatic";
     case FREE_JOINT:        return "free";
     case FIXED_JOINT:       return "fixed";
+    case PSEUDO_CONTINUOUS_TRACK: return "pseudo continuous track";
     case CRAWLER_JOINT:     return "crawler";
     case AGX_CRAWLER_JOINT: return "AgX crawler";
     default: return "unknown";

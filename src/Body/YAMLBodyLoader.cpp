@@ -489,6 +489,15 @@ bool YAMLBodyLoaderImpl::readBody(Mapping* topNode)
         }
     }
 
+    ValueNodePtr initDNode = topNode->extract("initialJointDisplacement");
+    if(initDNode){
+        Listing& initd = *initDNode->toListing();
+        const int n = std::min(initd.size(), body->numLinks());
+        for(int i=0; i < n; i++){
+            body->link(i)->initialJointDisplacement() = toRadian(initd[i].toDouble());
+        }
+    }
+
     body->resetInfo(topNode);
         
     body->installCustomizer();
@@ -535,9 +544,10 @@ LinkPtr YAMLBodyLoaderImpl::readLink(Mapping* linkNode)
             }
         }
     }
-    
-    string jointType;
-    if(extract(info, "jointType", jointType)){
+
+    ValueNodePtr jointTypeNode = info->find("jointType");
+    if(jointTypeNode->isValid()){
+        string jointType = jointTypeNode->toString();
         if(jointType == "revolute"){
             link->setJointType(Link::REVOLUTE_JOINT);
         } else if(jointType == "slide"){
@@ -546,10 +556,12 @@ LinkPtr YAMLBodyLoaderImpl::readLink(Mapping* linkNode)
             link->setJointType(Link::FREE_JOINT);
         } else if(jointType == "fixed"){
             link->setJointType(Link::FIXED_JOINT);
-        } else if(jointType == "crawler"){
-            link->setJointType(Link::CRAWLER_JOINT);
+        } else if(jointType == "pseudoContinuousTrack"){
+            link->setJointType(Link::PSEUDO_CONTINUOUS_TRACK);
         } else  if(jointType == "agx_crawler"){
             link->setJointType(Link::AGX_CRAWLER_JOINT);
+        } else {
+            jointTypeNode->throwException("Illegal jointType value");
         }
     }
 
@@ -900,6 +912,7 @@ bool YAMLBodyLoaderImpl::readForceSensor(Mapping& node)
     if(read(node, "maxForce",  v)) sensor->F_max().head<3>() = v;
     if(read(node, "maxTorque", v)) sensor->F_max().tail<3>() = v;
     readDevice(sensor, node);
+    return true;
 }
 
 
@@ -994,6 +1007,7 @@ bool YAMLBodyLoaderImpl::readSpotLight(Mapping& node)
     if(read(node, "direction", v)) light->setDirection(v);
     if(readAngle(node, "beamWidth", value)) light->setBeamWidth(value);
     if(readAngle(node, "cutOffAngle", value)) light->setCutOffAngle(value);
+    if(node.read("cutOffExponent", value)) light->setCutOffExponent(value);
     if(read(node, "attenuation", color)){
         light->setConstantAttenuation(color[0]);
         light->setLinearAttenuation(color[1]);

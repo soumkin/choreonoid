@@ -96,15 +96,15 @@ public:
     LazySignal< Signal<void()> > sigKinematicStateChanged;
     LazySignal< Signal<void()> > sigKinematicStateEdited;
 
+    LinkPtr currentBaseLink;
+    LinkTraverse fkTraverse;
+    PinDragIKptr pinDragIK;
+
     bool isEditable;
     bool isCallingSlotsOnKinematicStateEdited;
     bool isFkRequested;
     bool isVelFkRequested;
     bool isAccFkRequested;
-    Link* currentBaseLink;
-    LinkTraverse fkTraverse;
-    PinDragIKptr pinDragIK;
-
     bool isCollisionDetectionEnabled;
     bool isSelfCollisionDetectionEnabled;
 
@@ -740,7 +740,7 @@ bool BodyItem::isLeggedBody() const
     if(!impl->legged){
         impl->legged = getLeggedBodyHelper(impl->body);
     }
-    return (impl->legged->numFeet() > 0);
+    return impl->legged->isValid();
 }
         
 /**
@@ -755,8 +755,6 @@ bool BodyItem::doLegIkToMoveCm(const Vector3& c, bool onlyProjectionToFloor)
 bool BodyItemImpl::doLegIkToMoveCm(const Vector3& c, bool onlyProjectionToFloor)
 {
     bool result = false;
-
-    LeggedBodyHelperPtr legged = getLeggedBodyHelper(body);
 
     if(self->isLeggedBody()){
         

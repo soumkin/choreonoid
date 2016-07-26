@@ -170,6 +170,8 @@ void Body::cloneShapes(SgCloneMap& cloneMap)
 
 Body::~Body()
 {
+    setRootLink(0);
+    
     if(impl->customizerHandle){
         impl->customizerInterface->destroy(impl->customizerHandle);
     }
@@ -179,9 +181,12 @@ Body::~Body()
 
 void Body::setRootLink(Link* link)
 {
-    rootLink_ = link;
-
     if(rootLink_){
+        rootLink_->setBody(0);
+    }
+    rootLink_ = link;
+    if(rootLink_){
+        rootLink_->setBody(this);
         updateLinkTree();
     }
 }
@@ -405,7 +410,7 @@ void Body::initializeState()
     for(int i=0; i < n; ++i){
         Link* link = linkTraverse_[i];
         link->u() = 0.0;
-        link->q() = 0.0;
+        link->q() = link->initialJointDisplacement();
         link->dq() = 0.0;
         link->ddq() = 0.0;
     }

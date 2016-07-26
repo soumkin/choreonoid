@@ -17,6 +17,8 @@
 
 namespace cnoid {
 
+class Body;
+
 class Link;
 typedef ref_ptr<Link> LinkPtr;
 
@@ -49,6 +51,9 @@ public:
     Link* child() const { return child_; }
         
     bool isRoot() const { return !parent_; }
+
+    Body* body() { return body_; }
+    const Body* body() const { return body_; }
 
     Position& T() { return T_; }
     const Position& T() const { return T_; }
@@ -119,9 +124,12 @@ public:
         */
         /// fixed joint(0 dof)
         FIXED_JOINT = 3,
-        /// special joint for pseudo crawler simulation
-        CRAWLER_JOINT = 4,
-        AGX_CRAWLER_JOINT = 5
+        /// special joint for simplified simulation of a continuous track
+        PSEUDO_CONTINUOUS_TRACK = 4,
+        // deprecated
+        CRAWLER_JOINT = 5,
+        
+        AGX_CRAWLER_JOINT = 6
     };
 
     int jointId() const { return jointId_; }
@@ -254,6 +262,9 @@ public:
 
     void resetInfo(Mapping* info);
 
+    double initialJointDisplacement() const { return initd_; }
+    double& initialJointDisplacement() { return initd_; }
+
 #ifdef CNOID_BACKWARD_COMPATIBILITY
     // fext, tauext
     const double& ulimit() const { return q_upper_; }  ///< the upper limit of joint values
@@ -271,6 +282,7 @@ private:
     Link* parent_;
     LinkPtr sibling_;
     LinkPtr child_;
+    Body* body_;
     Position T_;
     Position Tb_;
     Matrix3 Rs_; // temporary variable for porting. This should be removed later.
@@ -295,9 +307,15 @@ private:
     double dq_upper_;
     double dq_lower_;
     std::string name_;
+    double initd_;
     SgNodePtr visualShape_;
     SgNodePtr collisionShape_;
     MappingPtr info_;
+
+    friend class Body;
+    
+    void setBody(Body* newBody);
+    void setBodySub(Body* newBody);
 };
 
 template<> CNOID_EXPORT double Link::info(const std::string& key) const;

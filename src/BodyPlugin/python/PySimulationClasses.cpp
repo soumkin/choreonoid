@@ -86,7 +86,7 @@ void exportSimulationClasses()
         enum_<SimulatorItem::TimeRangeMode>("TimeRangeMode")
             .value("TR_UNLIMITED", SimulatorItem::TR_UNLIMITED)
             .value("TR_ACTIVE_CONTROL", SimulatorItem::TR_ACTIVE_CONTROL)
-            .value("TR_SPECIFIC", SimulatorItem::TR_SPECIFIC)
+            .value("TR_SPECIFIED", SimulatorItem::TR_SPECIFIED)
             .value("TR_TIMEBAR", SimulatorItem::TR_TIMEBAR) 
             .value("N_TIME_RANGE_MODES", SimulatorItem::N_TIME_RANGE_MODES);
     }
@@ -102,6 +102,8 @@ void exportSimulationClasses()
             .def("setGravity", &AISTSimulatorItem::setGravity)
             .def("setFriction", AISTSimulatorItem_setFriction1)
             .def("setFriction", AISTSimulatorItem_setFriction2)
+            .def("collisionHandlerId", &AISTSimulatorItem::collisionHandlerId)
+            .def("setCollisionHandler", &AISTSimulatorItem::setCollisionHandler)
             .def("setContactCullingDistance", &AISTSimulatorItem::setContactCullingDistance)
             .def("setContactCullingDepth", &AISTSimulatorItem::setContactCullingDepth)
             .def("setErrorCriterion", &AISTSimulatorItem::setErrorCriterion)
@@ -142,7 +144,6 @@ void exportSimulationClasses()
         .def("setMaxFrameRate", &GLVisionSimulatorItem::setMaxFrameRate)
         .def("setMaxLatency", &GLVisionSimulatorItem::setMaxLatency)
         .def("setVisionDataRecordingEnabled", &GLVisionSimulatorItem::setVisionDataRecordingEnabled)
-        .def("setThreadEnabled", &GLVisionSimulatorItem::setThreadEnabled)
         .def("setDedicatedSensorThreadsEnabled", &GLVisionSimulatorItem::setDedicatedSensorThreadsEnabled)
         .def("setBestEffortMode", &GLVisionSimulatorItem::setBestEffortMode)
         .def("setRangeSensorPrecisionRatio", &GLVisionSimulatorItem::setRangeSensorPrecisionRatio)
@@ -185,4 +186,8 @@ void exportSimulationClasses()
         .def("stopSimulation", &SimulationBar::stopSimulation)
         .def("pauseSimulation", &SimulationBar::pauseSimulation)
         ;
+
+#ifdef _MSC_VER
+    register_ptr_to_python<SimulatorItemPtr>();
+#endif
 }

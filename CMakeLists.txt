@@ -11,7 +11,7 @@ project(Choreonoid)
 # set(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake_modules/)
 
 set(CNOID_MAJOR_VERSION 1) 
-set(CNOID_MINOR_VERSION 5)
+set(CNOID_MINOR_VERSION 6)
 set(CNOID_PATCH_VERSION 0)
 set(CNOID_VERSION ${CNOID_MAJOR_VERSION}.${CNOID_MINOR_VERSION})
 set(CNOID_FULL_VERSION ${CNOID_MAJOR_VERSION}.${CNOID_MINOR_VERSION}.${CNOID_PATCH_VERSION})
@@ -431,7 +431,7 @@ macro(setup_qt5)
   set(QT5 TRUE)
 
   add_definitions(-DQT_NO_KEYWORDS -DQT_NO_OPENGL_ES_2)
-  set(CMAKE_AUTOMOC ON)
+  set(CMAKE_AUTOMOC OFF)
   set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
   if(MSVC)
@@ -921,9 +921,11 @@ function(apply_common_setting_for_library_core target)
 
   get_target_property(target_type ${target} TYPE)
   if(target_type STREQUAL STATIC_LIBRARY)
-    install(TARGETS ${target}
-      LIBRARY DESTINATION lib CONFIGURATIONS Release Debug RelWithDebInfo MinSizeRel
-      ARCHIVE DESTINATION lib CONFIGURATIONS Release Debug RelWithDebInfo MinSizeRel)
+    if(INSTALL_SDK)
+      install(TARGETS ${target}
+        LIBRARY DESTINATION lib CONFIGURATIONS Release Debug RelWithDebInfo MinSizeRel
+        ARCHIVE DESTINATION lib CONFIGURATIONS Release Debug RelWithDebInfo MinSizeRel)
+    endif()
   else()
     install(TARGETS ${target}
       RUNTIME DESTINATION bin CONFIGURATIONS Release Debug RelWithDebInfo MinSizeRel
@@ -1081,34 +1083,6 @@ add_subdirectory(thirdparty/irrxml-1.2)
 set(IRRXML_INCLUDE_DIRS ${PROJECT_SOURCE_DIR}/thirdparty/irrxml-1.2/src)
 include_directories(${IRRXML_INCLUDE_DIRS})
 
-
-# glew library
-if(ENABLE_GUI)
-  if(UNIX)
-    set(USE_EXTERNAL_GLEW_DEFAULT ON)
-  elseif(MSVC)
-    set(USE_EXTERNAL_GLEW_DEFAULT OFF)
-  endif()
-  option(USE_EXTERNAL_GLEW "Use the GLEW library installed in an external directory" ${USE_EXTERNAL_GLEW_DEFAULT})
-  
-  if(USE_EXTERNAL_GLEW)
-    set(GLEW_DIR CACHE PATH "set the top directory of the GLEW library")
-    if(GLEW_DIR)
-      include_directories(${GLEW_DIR}/include)
-      link_directories(${GLEW_DIR}/lib)
-      set(GLEW_LIBRARIES GLEW)
-    elseif(UNIX)
-      pkg_check_modules(GLEW glew REQUIRED)
-      include_directories(${GLEW_INCLUDE_DIRS})
-      link_directories(${GLEW_LIBRARY_DIRS})
-    endif()
-  else()
-    include_directories(${Choreonoid_SOURCE_DIR}/thirdparty/glew-1.9.0/include)
-    set(GLEW_LIBRARIES glew32)
-    add_subdirectory(thirdparty/glew-1.9.0)
-  endif()
-endif()
-  
 if(UNIX)
   # png
   find_package(PNG REQUIRED)
@@ -1177,6 +1151,44 @@ endforeach()
 
 # CPack
 include(InstallRequiredSystemLibraries)
+
+# InstallRequiredSystemLibraries does not properly support MSVS 14 yet, so do it manually.  (CMake3.5)
+if(INSTALL_RUNTIME_DEPENDENCIES)
+unset(CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS_DEBUG)
+unset(CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS_RELEASE)
+if(DEFINED MSVC_VERSION AND NOT MSVC_VERSION LESS 1900)
+    # Internal: Architecture-appropriate library directory names.
+    if("${CMAKE_VS_PLATFORM_NAME}" STREQUAL "ARM")
+        set(_winsdk_arch8 arm) # what the WDK for Win8+ calls this architecture
+    else()
+        if(CMAKE_SIZEOF_VOID_P MATCHES "8")
+            set(_winsdk_arch8 x64) # what the WDK for Win8+ calls this architecture
+        else()
+            set(_winsdk_arch8 x86) # what the WDK for Win8+ calls this architecture
+        endif()
+    endif()
+
+    # The CRT is distributed with MSVS.
+    get_filename_component(MSVS_DIR
+        "[HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\VisualStudio\\14.0;ShellFolder]" ABSOLUTE)
+
+    # As of MSVC 19 the CRT depends on the 'univeral' CRT (which is part of Windows development kit 10 and above).
+    get_filename_component(WINDOWS_KIT_DIR
+        "[HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows Kits\\Installed Roots;KitsRoot10]" ABSOLUTE)
+
+    file(GLOB CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS_DEBUG
+        "${MSVS_DIR}/VC/redist/debug_nonredist/${_winsdk_arch8}/Microsoft.VC140.DebugCRT/*.dll"
+        "${WINDOWS_KIT_DIR}/Redist/ucrt/DLLs/${_winsdk_arch8}/api-ms-win-*.dll"
+        "${WINDOWS_KIT_DIR}/bin/${_winsdk_arch8}/ucrt/*.dll"
+    )
+    file(GLOB CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS_RELEASE
+        "${MSVS_DIR}/VC/redist/${_winsdk_arch8}/Microsoft.VC140.CRT/*.dll"
+        "${WINDOWS_KIT_DIR}/Redist/ucrt/DLLs/${_winsdk_arch8}/*.dll"
+    )
+
+    install(PROGRAMS ${CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS_RELEASE} DESTINATION bin )
+endif()
+endif()
 
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Choreonoid")
 set(CPACK_PACKAGE_VENDOR "Shin'ichiro Nakaoka, AIST")

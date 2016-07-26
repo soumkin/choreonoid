@@ -1,3 +1,5 @@
+optionalPlugins: [ ODE, Bullet, PhysX, AgX ]
+
 items: 
   id: 0
   name: "Root"
@@ -15,99 +17,112 @@ items:
       children: 
         - 
           id: 2
-          name: "Tank"
+          name: "SR1"
           plugin: Body
           class: BodyItem
           data: 
-            modelFile: "${SHARE}/model/misc/tank.wrl"
-            currentBaseLink: ""
-            rootPosition: [ -0.800000,  2.400000,  0.099893 ]
+            modelFile: "${SHARE}/model/SR1/SR1.yaml"
+            currentBaseLink: "WAIST"
+            rootPosition: [ 0, 0, 0.7135 ]
             rootAttitude: [ 
-              -0.000000,  1.000000, -0.000004, 
-              -1.000000, -0.000000,  0.000000, 
-               0.000000,  0.000004,  1.000000 ]
-            jointPositions: [  0.000000,  0.000000,  0.000000,  0.754258 ]
-            initialRootPosition: [ -0.800000,  2.400000,  0.100000 ]
+              0.999955, -0.006461, 0.006886, 
+              0.006461, 0.999979, -2.5e-005, 
+              -0.006886, 7e-005, 0.999976 ]
+            jointPositions: [ 
+               0.000822, -0.037473,  0.000350,  0.077177, -0.046633, -0.000874,  0.175490, -0.003915,  0.000048, 
+              -1.568620,  0.000121,  0.000267,  0.000008, -0.000889, -0.040642,  0.000364,  0.077387, -0.043666, 
+               0.000969,  0.175601,  0.003290,  0.000028, -1.568673,  0.000228,  0.000239,  0.000006,  0.005740, 
+              -0.000324,  0.000089 ]
+            initialRootPosition: [ 0, 0, 0.7135 ]
             initialRootAttitude: [ 
-               0.000000,  1.000000,  0.000000, 
-              -1.000000,  0.000000, -0.000000, 
-              -0.000000,  0.000000,  1.000000 ]
-            initialJointPositions: [  0.000000,  0.000000,  0.000000 ]
-            zmp: [  0.000000,  0.000000,  0.000000 ]
+              0.999955418, -0.00646083645, 0.00688615345, 
+              0.00646116355, 0.999979126, -2.52542765e-005, 
+              -0.00688584655, 6.97457235e-005, 0.99997629 ]
+            initialJointPositions: [ 
+               0.000822, -0.037473,  0.000350,  0.077177, -0.046633, -0.000874,  0.175490, -0.003915,  0.000048, 
+              -1.568620,  0.000121,  0.000267,  0.000008, -0.000889, -0.040642,  0.000364,  0.077387, -0.043666, 
+               0.000969,  0.175601,  0.003290,  0.000028, -1.568673,  0.000228,  0.000239,  0.000006,  0.005740, 
+              -0.000324,  0.000089 ]
+            zmp: [ 0, 0, 0 ]
             selfCollisionDetection: false
+            isEditable: true
           children: 
             - 
               id: 3
-              name: "BodyRTCItem"
-              plugin: OpenRTM
-              class: BodyRTCItem
+              name: "SR1LiftupController"
+              plugin: SimpleController
+              class: SimpleControllerItem
               data: 
                 isImmediateMode: true
-                moduleName: "TankJoystickControllerRTC"
-                confFileName: "TankVisionSensor.conf"
-                configurationMode: Use Configuration File
-                AutoConnect: false
-                InstanceName: Tank(2)
-                bodyPeriodicRate: 0
-            - 
-              id: 4
-              name: "RangeCameraPoints"
-              plugin: Base
-              class: PointSetItem
-            - 
-              id: 5
-              name: "RangeSensorPoints"
-              plugin: Base
-              class: PointSetItem
+                controller: "SR1LiftupController"
+                reloading: true
+                inputLinkPositions: false
         - 
-          id: 6
-          name: "Labo1"
+          id: 4
+          name: "box2"
           plugin: Body
           class: BodyItem
           data: 
-            modelFile: "${SHARE}/model/Labo1/Labo1.wrl"
-            currentBaseLink: "Base"
-            rootPosition: [  0.000000,  0.000000,  0.000000 ]
+            modelFile: "${SHARE}/model/misc/box2.wrl"
+            currentBaseLink: "WAIST"
+            rootPosition: [ 0.55, 0, 0.151 ]
             rootAttitude: [ 
-               1.000000,  0.000000,  0.000000, 
-               0.000000,  1.000000,  0.000000, 
-               0.000000,  0.000000,  1.000000 ]
+              1, 0, 0, 
+              0, 1, 0, 
+              0, 0, 1 ]
             jointPositions: [  ]
-            initialRootPosition: [  0.000000,  0.000000,  0.000000 ]
+            initialRootPosition: [ 0.55, 0, 0.151 ]
             initialRootAttitude: [ 
-               1.000000,  0.000000,  0.000000, 
-               0.000000,  1.000000,  0.000000, 
-               0.000000,  0.000000,  1.000000 ]
-            zmp: [  0.000000,  0.000000,  0.000000 ]
+              1, 0, 0, 
+              0, 1, 0, 
+              0, 0, 1 ]
+            zmp: [ 0, 0, 0 ]
             selfCollisionDetection: false
+            isEditable: true
         - 
-          id: 7
-          name: "JoystickRTC"
-          plugin: OpenRTM
-          class: RTCItem
+          id: 5
+          name: "Floor"
+          plugin: Body
+          class: BodyItem
           data: 
-            moduleName: "JoystickRTC"
-            periodicType: PeriodicExecutionContext
-            periodicRate: 500
+            modelFile: "${SHARE}/model/misc/floor.wrl"
+            currentBaseLink: "BASE"
+            rootPosition: [ 0, 0, -0.1 ]
+            rootAttitude: [ 
+              1, 0, 0, 
+              0, 1, 0, 
+              0, 0, 1 ]
+            jointPositions: [  ]
+            initialRootPosition: [ 0, 0, -0.1 ]
+            initialRootAttitude: [ 
+              1, 0, 0, 
+              0, 1, 0, 
+              0, 0, 1 ]
+            zmp: [ 0, 0, 0 ]
+            selfCollisionDetection: false
+            isEditable: true
         - 
-          id: 8
+          id: 6
           name: "AISTSimulator"
           plugin: Body
           class: AISTSimulatorItem
           data: 
             realtimeSync: true
-            recording: false
-            timeRangeMode: TimeBar range
-            onlyActiveControlPeriod: true
+            recording: "full"
+            timeRangeMode: "Active control period"
             timeLength: 60
             allLinkPositionOutputMode: false
             deviceStateOutput: true
-            dynamicsMode: Forward dynamics
-            integrationMode: Runge Kutta
+            controllerThreads: true
+            recordCollisionData: false
+            controllerOptions: ""
+            dynamicsMode: "Forward dynamics"
+            integrationMode: "Runge Kutta"
             gravity: [ 0, 0, -9.80665 ]
             staticFriction: 0.5
             slipFriction: 0.5
             cullingThresh: 0.01
+            contactCullingDepth: 0.05
             errorCriterion: 0.001
             maxNumIterations: 1000
             contactCorrectionDepth: 0.0001
@@ -116,34 +131,39 @@ items:
             2Dmode: false
           children: 
             - 
-              id: 9
-              name: "GLVisionSimulator"
-              plugin: Body
-              class: GLVisionSimulatorItem
-              data: 
-                targetBody: Tank
-                targetSensor: Camera
-                allVisionSensors: true
-                recordVisionData: false
-                useThread: false
-                rangeSensorPrecisionRatio: 2
+              id: 7
+              name: "SpringDamperContact"
+              plugin: SpringDamperContact
+              class: SpringDamperContactItem
+            - 
+              id: 8
+              name: "SetupSR1SpringDamperContact"
+              plugin: PythonSimScript
+              class: PythonSimScriptItem
+              data:
+                timing: Before init.
+                delay: 0
+                simulationOnly: true
+                backgroundExecution: false
+                file: "${SHARE}/script/SetupSR1SpringDamperContact.py"
+
 views: 
   "Items": 
-    selected: [ 1 ]
-    checked: [ 1, 2, 4, 5, 6 ]
-    expanded: [ 1, 2, 3, 8 ]
+    selected: [ 7 ]
+    checked: [ 1, 2, 4, 8 ]
+    expanded: [ 1, 2, 3, 6 ]
   "Scene": 
     viewpointControlMode: thirdPerson
     collisionLines: false
     polygonMode: fill
-    defaultHeadLight: false
+    defaultHeadLight: true
     defaultHeadLightIntensity: 0.75
     headLightLightingFromBack: false
     worldLight: true
-    worldLightIntensity: 0.1
-    worldLightAmbient: 0
+    worldLightIntensity: 0.5
+    worldLightAmbient: 0.3
     additionalLights: true
-    floorGrid: false
+    floorGrid: true
     floorGridSpan: 10
     floorGridInterval: 0.5
     texture: true
@@ -156,15 +176,15 @@ views:
     useBufferForPicking: true
     camera: 
       current: Perspective
-      eye: [ -2.99869, 5.22338, 2.18657 ]
-      direction: [ 0.451675, -0.80211, -0.390653 ]
-      up: [ 0.191679, -0.340395, 0.920538 ]
+      eye: [ 2.38053012, 1.54674006, 1.10801005 ]
+      direction: [ -0.820639908, -0.553809941, -0.140870988 ]
+      up: [ -0.116768934, -0.0788013488, 0.990027964 ]
       fieldOfView: 0.6978
       near: 0.01
       far: 10000
       orthoHeight: 20
-    backgroundColor: [ 0, 0, 0 ]
-    gridColor: [ 0.9, 0.9, 0.9, 1 ]
+    backgroundColor: [ 0.100000001, 0.100000001, 0.300000012 ]
+    gridColor: [ 0.899999976, 0.899999976, 0.899999976, 1 ]
   "Multi Value Seq": 
     mode: view
     editMode: freeLine
@@ -210,7 +230,7 @@ views:
     bodyItems: 
       - 
         id: 2
-        selectedLinks: [ 0 ]
+        selectedLinks: [ 20 ]
   "Body / Link": 
     showRotationMatrix: false
   "Joint Sliders": 
@@ -273,8 +293,8 @@ views:
 toolbars: 
   "TimeBar": 
     minTime: 0
-    maxTime: 60
-    frameRate: 1000
+    maxTime: 15
+    frameRate: 500
     playbackFrameRate: 100
     idleLoopDrivenMode: false
     currentTime: 0
@@ -303,7 +323,6 @@ toolbars:
     allLinkPositions: false
     lipSyncMix: false
   "BodyBar": 
-    current: 2
     stanceWidth: 0.15
   "KinematicsBar": 
     mode: FK
@@ -320,10 +339,6 @@ Body:
     editableSceneBodies: 
       - 
         bodyItem: 2
-        showCenterOfMass: false
-        showZmp: false
-      - 
-        bodyItem: 6
         showCenterOfMass: false
         showZmp: false
   "KinematicFaultChecker": 
